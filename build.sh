@@ -21,6 +21,9 @@ cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/"
 cp -R Resources/flags "$APP/Contents/Resources/flags"
 
+# Strip extended attributes so the zip carries no ._ files that break the signature
+xattr -cr "$APP"
+
 # Ad-hoc sign with an identifier-only requirement so the Accessibility
 # permission survives rebuilds.
 codesign --force -s - -r='designated => identifier "com.znbest.CaretLang"' "$APP"
@@ -39,7 +42,7 @@ case "${1:-}" in
     VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" Resources/Info.plist)
     ZIP="build/CaretLang-$VERSION.zip"
     rm -f "$ZIP"
-    ditto -c -k --keepParent "$APP" "$ZIP"
+    ditto -c -k --norsrc --noextattr --noqtn --keepParent "$APP" "$ZIP"
     echo "Packed $ZIP"
     ;;
 esac
