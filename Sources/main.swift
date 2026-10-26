@@ -2,6 +2,7 @@
 import Cocoa
 import ApplicationServices
 import Carbon
+import ServiceManagement
 
 // MARK: - ภาษา -> ธง + ตัวอย่างตัวอักษร
 
@@ -191,6 +192,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         AXIsProcessTrustedWithOptions(opts)
+
+        // เปิดเองตอน login (ปิดได้ที่ System Settings → General → Login Items)
+        if SMAppService.mainApp.status != .enabled {
+            try? SMAppService.mainApp.register()
+        }
 
         Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in self?.tick() }
     }

@@ -2,11 +2,7 @@
 
 A tiny macOS menu-less app that keeps a **flag + sample letters** of your current input source pinned right next to the text cursor — so you stop typing `ทำหยที` when you meant `hello`.
 
-| Thai | English | Japanese |
-|---|---|---|
-| 🇹🇭 กขค | 🇺🇸 ABC | 🇯🇵 あいう |
-
-*(the app draws real SVG flag icons, not emoji)*
+![CaretLang badge under the text cursor](docs/screenshot.png)
 
 ## Features
 
@@ -28,7 +24,7 @@ cd CaretLang
 
 On first launch macOS asks for **Accessibility** permission (System Settings → Privacy & Security → Accessibility → enable CaretLang). The badge appears as soon as it's granted.
 
-To start it at login: System Settings → General → Login Items → `+` → `~/Applications/CaretLang.app`.
+CaretLang registers itself as a login item on first launch. Turn that off in System Settings → General → Login Items.
 
 ## Uninstall
 
