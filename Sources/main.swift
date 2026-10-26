@@ -164,6 +164,10 @@ func findAnchor() -> Anchor? {
     if sel.location > 0, let r = bounds(el, loc: sel.location - 1, len: 1) {
         return .caret(CGRect(x: r.maxX, y: r.minY, width: 1, height: r.height))
     }
+    // ไม่รู้ตำแหน่ง caret: เดาเฉพาะ element ที่เป็นช่องพิมพ์จริง
+    // (desktop ของ Finder เป็น AXGroup ที่มี selected range แต่พิมพ์ไม่ได้)
+    let role: String? = axValue(el, kAXRoleAttribute)
+    guard let role, [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole].contains(role) else { return nil }
     guard let posV: AXValue = axValue(el, kAXPositionAttribute), let sizeV: AXValue = axValue(el, kAXSizeAttribute) else { return nil }
     var p = CGPoint.zero, s = CGSize.zero
     AXValueGetValue(posV, .cgPoint, &p)
