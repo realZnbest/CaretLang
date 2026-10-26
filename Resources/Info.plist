@@ -3,8 +3,13 @@
 <plist version="1.0"><dict>
 <key>CFBundleIdentifier</key><string>com.znbest.CaretLang</string>
 <key>CFBundleName</key><string>CaretLang</string>
+<key>CFBundleDisplayName</key><string>CaretLang</string>
 <key>CFBundleExecutable</key><string>CaretLang</string>
+<key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>1.0</string>
+<key>CFBundleShortVersionString</key><string>1.0.0</string>
+<key>CFBundleVersion</key><string>1</string>
+<key>LSMinimumSystemVersion</key><string>14.0</string>
 <key>LSUIElement</key><true/>
+<key>NSHumanReadableCopyright</key><string>MIT License</string>
 </dict></plist>

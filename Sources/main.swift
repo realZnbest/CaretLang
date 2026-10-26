@@ -203,7 +203,61 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         setUpMenuBar()
-        Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in self?.tick() }
+
+        // อัปเดตตามเหตุการณ์แทนการเช็กถี่ๆ: สลับแอป, สลับภาษา, และ AX notification ของแอปที่อยู่หน้าสุด
+        NSWorkspace.shared.notificationCenter.addObserver(
+            self, selector: #selector(frontAppChanged), name: NSWorkspace.didActivateApplicationNotification, object: nil)
+        DistributedNotificationCenter.default().addObserver(
+            self, selector: #selector(inputSourceChanged),
+            name: NSNotification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String), object: nil)
+        // สำรองไว้สำหรับกรณีที่ไม่มี notification (เช่น scroll) และตอนเพิ่งได้สิทธิ์ Accessibility
+        Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.tick() }
+        frontAppChanged()
+    }
+
+    // MARK: AX observer
+
+    var observer: AXObserver?
+    var observedPid: pid_t = 0
+
+    static let watched = [
+        kAXFocusedUIElementChangedNotification, kAXSelectedTextChangedNotification, kAXValueChangedNotification,
+        kAXFocusedWindowChangedNotification, kAXWindowMovedNotification, kAXWindowResizedNotification,
+    ]
+
+    @objc func frontAppChanged() {
+        watchFrontApp()
+        tick()
+    }
+
+    @objc func inputSourceChanged() {
+        tick()
+    }
+
+    func watchFrontApp() {
+        guard AXIsProcessTrusted(), let front = NSWorkspace.shared.frontmostApplication else { return }
+        let pid = front.processIdentifier
+        guard pid != observedPid else { return }
+
+        if let old = observer {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(old), .defaultMode)
+            observer = nil
+        }
+        observedPid = pid
+
+        var obs: AXObserver?
+        let callback: AXObserverCallback = { _, _, _, refcon in
+            guard let refcon else { return }
+            Unmanaged<AppDelegate>.fromOpaque(refcon).takeUnretainedValue().tick()
+        }
+        guard AXObserverCreate(pid, callback, &obs) == .success, let obs else { return }
+        let appEl = AXUIElementCreateApplication(pid)
+        let refcon = Unmanaged.passUnretained(self).toOpaque()
+        for n in Self.watched {
+            AXObserverAddNotification(obs, appEl, n as CFString, refcon)
+        }
+        CFRunLoopAddSource(CFRunLoopGetMain(), AXObserverGetRunLoopSource(obs), .defaultMode)
+        observer = obs
     }
 
     // MARK: menu bar
@@ -265,6 +319,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     func tick() {
         guard AXIsProcessTrusted() else { badge.orderOut(nil); return }
+        watchFrontApp()
         pokeFrontApp()
         guard let anchor = findAnchor(), let main = NSScreen.screens.first else { badge.orderOut(nil); return }
         badge.update(currentLanguage())
