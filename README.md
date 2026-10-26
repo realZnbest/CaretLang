@@ -1,6 +1,6 @@
 # CaretLang
 
-A tiny macOS menu-less app that keeps a **flag + sample letters** of your current input source pinned right next to the text cursor — so you stop typing `ทำหยที` when you meant `hello`.
+A tiny macOS menu bar app that keeps a **flag + sample letters** of your current input source pinned right next to the text cursor — so you stop typing `ทำหยที` when you meant `hello`.
 
 ![CaretLang badge under the text cursor](docs/screenshot.png)
 
@@ -24,13 +24,14 @@ cd CaretLang
 
 On first launch macOS asks for **Accessibility** permission (System Settings → Privacy & Security → Accessibility → enable CaretLang). The badge appears as soon as it's granted.
 
-CaretLang registers itself as a login item on first launch. Turn that off in System Settings → General → Login Items.
+CaretLang registers itself as a login item on first launch. Toggle it from the menu bar icon → **Launch at Login**.
 
-## Uninstall
+## Quit / Uninstall
 
-```bash
-pkill -x CaretLang; rm -rf ~/Applications/CaretLang.app
-```
+Click the menu bar icon (the I-beam with a cursor):
+
+- **Quit CaretLang** — stops it until next login.
+- **Uninstall CaretLang…** — removes the login item and Accessibility permission, moves the app to the Trash, and quits.
 
 ## How it works
 

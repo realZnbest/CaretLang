@@ -186,19 +186,81 @@ func pokeFrontApp() {
 
 // MARK: - App
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let badge = Badge()
+    var statusItem: NSStatusItem!
+    let loginItem = NSMenuItem(title: "Launch at Login", action: #selector(toggleLogin), keyEquivalent: "")
 
     func applicationDidFinishLaunching(_ n: Notification) {
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary
         AXIsProcessTrustedWithOptions(opts)
 
-        // เปิดเองตอน login (ปิดได้ที่ System Settings → General → Login Items)
-        if SMAppService.mainApp.status != .enabled {
+        // เปิดเองตอน login เฉพาะครั้งแรก — ถ้าผู้ใช้ปิดทีหลังจะไม่เปิดกลับให้
+        let defaults = UserDefaults.standard
+        if !defaults.bool(forKey: "didSetUpLoginItem") {
             try? SMAppService.mainApp.register()
+            defaults.set(true, forKey: "didSetUpLoginItem")
         }
 
+        setUpMenuBar()
         Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self] _ in self?.tick() }
+    }
+
+    // MARK: menu bar
+
+    func setUpMenuBar() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem.button?.image = NSImage(systemSymbolName: "character.cursor.ibeam", accessibilityDescription: "CaretLang")
+
+        let menu = NSMenu()
+        menu.delegate = self
+        menu.addItem(withTitle: "CaretLang", action: nil, keyEquivalent: "")
+        menu.addItem(.separator())
+        loginItem.target = self
+        menu.addItem(loginItem)
+        menu.addItem(.separator())
+        menu.addItem(withTitle: "Uninstall CaretLang…", action: #selector(uninstall), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Quit CaretLang", action: #selector(quit), keyEquivalent: "q").target = self
+        statusItem.menu = menu
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        loginItem.state = SMAppService.mainApp.status == .enabled ? .on : .off
+    }
+
+    @objc func toggleLogin() {
+        if SMAppService.mainApp.status == .enabled {
+            try? SMAppService.mainApp.unregister()
+        } else {
+            try? SMAppService.mainApp.register()
+        }
+    }
+
+    @objc func quit() {
+        NSApp.terminate(nil)
+    }
+
+    // ลบ login item, สิทธิ์ Accessibility และย้ายตัวแอปไปถังขยะ แล้วปิดตัวเอง
+    @objc func uninstall() {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.messageText = "Uninstall CaretLang?"
+        alert.informativeText = "This removes the login item and Accessibility permission, moves CaretLang to the Trash, and quits."
+        alert.addButton(withTitle: "Uninstall")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+
+        try? SMAppService.mainApp.unregister()
+        if let id = Bundle.main.bundleIdentifier {
+            let reset = Process()
+            reset.executableURL = URL(fileURLWithPath: "/usr/bin/tccutil")
+            reset.arguments = ["reset", "Accessibility", id]
+            try? reset.run()
+            reset.waitUntilExit()
+            UserDefaults.standard.removePersistentDomain(forName: id)
+        }
+        try? FileManager.default.trashItem(at: Bundle.main.bundleURL, resultingItemURL: nil)
+        NSApp.terminate(nil)
     }
 
     func tick() {
