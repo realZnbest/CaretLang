@@ -146,6 +146,34 @@ func bounds(_ el: AXUIElement, loc: Int, len: Int) -> CGRect? {
     return r.height > 0 ? r : nil
 }
 
+func char(_ el: AXUIElement, at loc: Int) -> Character? {
+    var range = CFRange(location: loc, length: 1)
+    guard loc >= 0, let rv = AXValueCreate(.cfRange, &range) else { return nil }
+    var out: CFTypeRef?
+    guard AXUIElementCopyParameterizedAttributeValue(el, kAXStringForRangeParameterizedAttribute as CFString, rv, &out) == .success,
+          let str = out as? String else { return nil }
+    return str.first
+}
+
+func elementFrame(_ el: AXUIElement) -> CGRect? {
+    guard let posV: AXValue = axValue(el, kAXPositionAttribute), let sizeV: AXValue = axValue(el, kAXSizeAttribute) else { return nil }
+    var p = CGPoint.zero, s = CGSize.zero
+    AXValueGetValue(posV, .cgPoint, &p)
+    AXValueGetValue(sizeV, .cgSize, &s)
+    return s.height > 0 ? CGRect(origin: p, size: s) : nil
+}
+
+// ตัด rect ที่ผิดปกติทิ้ง: ใหญ่เกินจะเป็นเคอร์เซอร์ หรือหลุดออกนอกช่องพิมพ์
+// บางแอปส่งพิกัดกลับหัว (นับ y จากล่าง) — ถ้ากลับแล้วตกในช่องพิมพ์ก็ใช้ตัวที่กลับแล้ว
+func sane(_ r: CGRect?, in frame: CGRect?) -> CGRect? {
+    guard let r, r.height >= 4, r.height <= 120, r.width <= 120 else { return nil }
+    guard let frame, let main = NSScreen.screens.first else { return r }
+    let area = frame.insetBy(dx: -8, dy: -8)
+    if area.intersects(r) { return r }
+    let flipped = CGRect(x: r.minX, y: main.frame.height - r.maxY, width: r.width, height: r.height)
+    return area.intersects(flipped) ? flipped : nil
+}
+
 enum Anchor {
     case caret(CGRect)  // ตำแหน่ง caret จริง
     case corner(CGRect) // แอปไม่บอก caret (เช่น terminal) — ปักไว้มุมซ้ายล่างของช่องพิมพ์
@@ -159,23 +187,27 @@ func findAnchor() -> Anchor? {
     var sel = CFRange()
     AXValueGetValue(rangeVal, .cfRange, &sel)
 
-    if let r = bounds(el, loc: sel.location, len: 0) { return .caret(r) }
-    if let r = bounds(el, loc: sel.location, len: 1) { return .caret(CGRect(x: r.minX, y: r.minY, width: 1, height: r.height)) }
-    if sel.location > 0, let r = bounds(el, loc: sel.location - 1, len: 1) {
+    let frame = elementFrame(el)
+    // ใช้ตัวอักษรข้างๆ caret ก่อน — rect ของช่วงยาว 0 ใน AppKit มักเลื่อนขึ้นไป 1 บรรทัด
+    // (ข้ามขึ้นบรรทัดใหม่ เพราะ rect ของ "\n" อยู่ท้ายบรรทัดก่อนหน้า)
+    let loc = sel.location
+    if let c = char(el, at: loc), !c.isNewline, let r = sane(bounds(el, loc: loc, len: 1), in: frame) {
+        return .caret(CGRect(x: r.minX, y: r.minY, width: 1, height: r.height))
+    }
+    if loc > 0, let c = char(el, at: loc - 1), !c.isNewline, let r = sane(bounds(el, loc: loc - 1, len: 1), in: frame) {
         return .caret(CGRect(x: r.maxX, y: r.minY, width: 1, height: r.height))
+    }
+    if let r = sane(bounds(el, loc: loc, len: 0), in: frame) {
+        return .caret(CGRect(x: r.minX, y: r.minY, width: 1, height: r.height))
     }
     // ไม่รู้ตำแหน่ง caret: เดาเฉพาะ element ที่เป็นช่องพิมพ์จริง
     // (desktop ของ Finder เป็น AXGroup ที่มี selected range แต่พิมพ์ไม่ได้)
     let role: String? = axValue(el, kAXRoleAttribute)
     guard let role, [kAXTextFieldRole, kAXTextAreaRole, kAXComboBoxRole].contains(role) else { return nil }
-    guard let posV: AXValue = axValue(el, kAXPositionAttribute), let sizeV: AXValue = axValue(el, kAXSizeAttribute) else { return nil }
-    var p = CGPoint.zero, s = CGSize.zero
-    AXValueGetValue(posV, .cgPoint, &p)
-    AXValueGetValue(sizeV, .cgSize, &s)
-    guard s.height > 0 else { return nil }
+    guard let frame else { return nil }
     // ช่องพิมพ์บรรทัดเดียวที่ว่างอยู่: ใช้ด้านซ้ายของช่อง
-    if s.height < 60 { return .caret(CGRect(x: p.x + 4, y: p.y, width: 1, height: s.height)) }
-    return .corner(CGRect(origin: p, size: s))
+    if frame.height < 60 { return .caret(CGRect(x: frame.minX + 4, y: frame.minY, width: 1, height: frame.height)) }
+    return .corner(frame)
 }
 
 // Chrome / Electron ต้องเปิด accessibility ให้ก่อนถึงจะบอกตำแหน่ง caret
@@ -189,6 +221,15 @@ func pokeFrontApp() {
 }
 
 // MARK: - App
+
+// พิกัด AX (มุมบนซ้ายของจอหลัก) -> พิกัด Cocoa (มุมล่างซ้าย)
+func cocoaRect(_ r: CGRect, main: NSScreen) -> NSRect {
+    NSRect(x: r.minX, y: main.frame.height - r.maxY, width: r.width, height: r.height)
+}
+
+func screen(containing r: NSRect) -> NSScreen? {
+    NSScreen.screens.first { $0.frame.intersects(r) } ?? NSScreen.main
+}
 
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     let badge = Badge()
@@ -216,7 +257,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             name: NSNotification.Name(kTISNotifySelectedKeyboardInputSourceChanged as String), object: nil)
         // สำรองไว้สำหรับกรณีที่ไม่มี notification (เช่น scroll) และตอนเพิ่งได้สิทธิ์ Accessibility
         Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.tick() }
+        // บางแอปไม่ส่ง notification ตอน caret ขยับ — ตามคีย์บอร์ด/เมาส์เอง
+        NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .leftMouseUp, .scrollWheel]) { [weak self] e in
+            if e.type == .keyDown { self?.typed() }
+            self?.scheduleTick()
+        }
         frontAppChanged()
+    }
+
+    // รวบหลาย event ที่มาติดกันให้เหลือ tick เดียว และรอให้แอปขยับ caret เสร็จก่อน
+    var tickPending = false
+    func scheduleTick() {
+        guard !tickPending else { return }
+        tickPending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { [weak self] in
+            self?.tickPending = false
+            self?.tick()
+        }
+    }
+
+    // ระหว่างพิมพ์ให้ป้ายจางลงจะได้ไม่บังตัวอักษร หยุดพิมพ์แล้วค่อยชัดกลับ
+    var idleWork: DispatchWorkItem?
+    func typed() {
+        badge.alphaValue = 0.4
+        idleWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.badge.animator().alphaValue = 1 }
+        idleWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: work)
     }
 
     // MARK: AX observer
@@ -327,14 +394,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         pokeFrontApp()
         guard let anchor = findAnchor(), let main = NSScreen.screens.first else { badge.orderOut(nil); return }
         badge.update(currentLanguage())
-        // แปลงพิกัด AX -> Cocoa
-        let h = main.frame.height, size = badge.frame.size
+        let size = badge.frame.size
+        var origin: NSPoint
+        var line: NSRect
         switch anchor {
         case .caret(let r):
-            badge.setFrameOrigin(NSPoint(x: r.maxX + 3, y: h - r.maxY - size.height - 2))
+            line = cocoaRect(r, main: main)
+            let gap = max(3, (line.height * 0.15).rounded())
+            origin = NSPoint(x: line.minX + 1, y: line.minY - gap - size.height)
+            // ล้นขอบล่างของจอ -> ย้ายไปไว้เหนือบรรทัด
+            if let vis = screen(containing: line)?.visibleFrame, origin.y < vis.minY {
+                origin.y = line.maxY + gap
+            }
         case .corner(let r):
-            badge.setFrameOrigin(NSPoint(x: r.minX + 12, y: h - r.maxY + 10))
+            line = cocoaRect(r, main: main)
+            origin = NSPoint(x: line.minX + 12, y: line.minY + 10)
         }
+        if let vis = screen(containing: line)?.visibleFrame {
+            origin.x = min(max(origin.x, vis.minX + 2), vis.maxX - size.width - 2)
+            origin.y = min(max(origin.y, vis.minY + 2), vis.maxY - size.height - 2)
+        }
+        badge.setFrameOrigin(origin)
         badge.orderFrontRegardless()
     }
 }
