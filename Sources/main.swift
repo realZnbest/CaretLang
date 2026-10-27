@@ -16,11 +16,14 @@ let layoutRegionOverrides: [(String, String)] = [
     ("British", "gb"), ("Australian", "au"), ("Canadian", "ca"), ("Irish", "ie"),
     ("Swiss", "ch"), ("Austrian", "at"), ("Belgian", "be"), ("Brazilian", "br"),
     ("Portuguese", "pt"), ("Mexican", "mx"), ("LatinAmerican", "mx"), ("NewZealand", "nz"),
-    ("Taiwan", "tw"), ("HongKong", "hk"), ("Cantonese", "hk"), ("Singapore", "sg"),
+    ("Taiwan", "tw"), ("HongKong", "hk"), ("Cantonese", "hk"), ("Singapore", "sg"), ("Afghan", "af"),
 ]
 
 // ภาษาที่ประเทศ default ของ Locale ยังไม่ใช่ตัวที่คนส่วนใหญ่คาดหวัง
-let languageRegionOverrides: [String: String] = ["ar": "sa"]
+// ภาษาท้องถิ่นที่มีธงของตัวเอง (Wales, Scotland, Catalonia ฯลฯ)
+let languageRegionOverrides: [String: String] = [
+    "ar": "sa", "cy": "gb-wls", "gd": "gb-sct", "ca": "es-ct", "eu": "es-pv", "gl": "es-ga", "yi": "il",
+]
 
 let languageSamples: [String: String] = [
     "ja": "あいう", "ko": "가나다", "zh": "中文", "vi": "ĂÂĐ", "fa": "ابپ", "ur": "ابپ",
@@ -32,7 +35,11 @@ let scriptSamples: [String: String] = [
     "Telu": "అఆఇ", "Knda": "ಅಆಇ", "Mlym": "അആഇ", "Gujr": "અઆઇ", "Guru": "ਅਆਇ", "Orya": "ଅଆଇ",
     "Sinh": "අආඇ", "Tibt": "ཀཁག", "Geor": "აბგ", "Armn": "աբգ", "Ethi": "ሀለሐ", "Hang": "가나다", "Kore": "가나다",
     "Jpan": "あいう", "Hans": "中文", "Hant": "中文", "Cher": "ᎠᎡᎢ", "Thaa": "ހށނ", "Mong": "ᠠᠡᠢ",
-    "Tfng": "ⴰⴱⴳ", "Syrc": "ܐܒܓ", "Cans": "ᐁᐃᐅ",
+    "Tfng": "ⴰⴱⴳ", "Syrc": "ܐܒܓ", "Cans": "ᐁᐃᐅ", "Kana": "アイウ", "Hira": "あいう", "Bopo": "ㄅㄆㄇ",
+    "Adlm": "𞤀𞤁𞤂", "Tglg": "ᜀᜁᜂ", "Rohg": "𐴀𐴁𐴂", "Mand": "ࡀࡁࡂ", "Mtei": "ꯀꯁꯂ", "Nkoo": "ߊߋߌ",
+    "Osge": "𐒰𐒱𐒲", "Hmng": "𖬀𖬁𖬂", "Rjng": "ꤰꤱꤲ", "Olck": "ᱚᱛᱜ", "Wcho": "𞋀𞋁𞋂", "Yiii": "ꀀꀁꀂ",
+    "Vaii": "ꔀꔁꔂ", "Bali": "ᬅᬆᬇ", "Java": "ꦄꦅꦆ", "Sund": "ᮃᮄᮅ", "Cakm": "𑄃𑄄𑄅", "Tavt": "ꪀꪁꪂ",
+    "Lana": "ᨠᨡᨢ", "Talu": "ᦀᦁᦂ", "Tale": "ᥐᥑᥒ", "Brah": "𑀅𑀆𑀇", "Copt": "ⲀⲂⲄ", "Runr": "ᚠᚢᚦ",
 ]
 
 var langCache: [String: LangInfo] = [:]
@@ -45,10 +52,16 @@ func currentLanguage() -> LangInfo {
     }
     if let hit = langCache[id] { return hit }
 
-    var code = "en"
+    var code = ""
     if let p = TISGetInputSourceProperty(src, kTISPropertyInputSourceLanguages),
        let first = (Unmanaged<CFArray>.fromOpaque(p).takeUnretainedValue() as? [String])?.first {
         code = first
+    }
+    // input source ที่ไม่ผูกกับภาษา เช่น Unicode Hex Input
+    if code.isEmpty {
+        let info = LangInfo(region: nil, sample: id.hasSuffix("UnicodeHexInput") ? "U+" : "ABC")
+        langCache[id] = info
+        return info
     }
     // เติม script/ประเทศที่น่าจะเป็นให้เอง เช่น "th" -> "th-Thai-TH", "en" -> "en-Latn-US"
     let full = Locale.Language(identifier: Locale.Language(identifier: code).maximalIdentifier)
